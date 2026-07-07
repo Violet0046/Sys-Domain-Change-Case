@@ -1,0 +1,107 @@
+[
+  {
+    "cases": [
+      {
+        "case": "4.2.1.1 PDCCH链路自适应流程",
+        "subSystem": "SPA",
+        "description": "超级小区功率共享功能开启，若UE要进行PDCCH内环调整，则计算CCE时内环需要增加Delta量。"
+      },
+      {
+        "case": "4.2.1.1 PDCCH链路自适应流程",
+        "subSystem": "SPA",
+        "description": "功率调整：下行控制信道，广播、MSG2、参考信号等PDCCH信道功率调整（在output出口处降功率，不影响其他功率流程）；"
+      },
+      {
+        "case": "4.2.1.1 PDCCH链路自适应流程",
+        "subSystem": "CRV",
+        "description": "超级小区场景根据功率共享RRU配置、功率共享开关、UE PDCCH激活集等信息，确定UE是否要调整PDCCH内环。"
+      }
+    ],
+    "feature": "PDCCH链路自适应管理"
+  },
+  {
+    "cases": [
+      {
+        "case": "4.2.1 公共过程",
+        "subSystem": "SPA",
+        "description": "功率调整：下行业务，广播、MSG2、参考信号等PDSCH功率调整（在output出口处降功率，不影响其他功率流程）"
+      },
+      {
+        "case": "4.2.1 公共过程",
+        "subSystem": "SPA",
+        "description": "功率保护：PDSCH/PDSCH功率保护流程，按照CP级计算功率保护的时候需要考虑共享CP对的功率使用情况。"
+      },
+      {
+        "case": "4.2.1 公共过程",
+        "subSystem": "PHY",
+        "description": "超级小区场景根据功率共享RRU配置确定是否进行CSIRS功率调整。"
+      },
+      {
+        "case": "4.2.1 公共过程",
+        "subSystem": "CRV",
+        "description": "超级小区场景根据功率共享RRU配置、功率共享开关、UE PDSCH激活集、SDMA配对情况等信息，确定UE/广播/SSB等是否要调整功率调整。"
+      },
+      {
+        "case": "4.2.6 256QAM降功率",
+        "subSystem": "SPA",
+        "description": "超级小区功率共享场景，下行256QAM降功率流程需要按照功率共享CP组计算（原流程是按照CP级独立计算）。"
+      }
+    ],
+    "feature": "下行功率分配"
+  },
+  {
+    "cases": [
+      {
+        "case": "4.2.6 基于CP级下行频偏补偿的下行传输",
+        "subSystem": "PHY",
+        "description": "PHY根据载波的频偏补偿类型发送正确的下行CP级频偏补偿值到RRU。"
+      }
+    ],
+    "feature": "高铁"
+  },
+  {
+    "cases": [
+      {
+        "case": "4.2.16 -切片场景2：超级小区配置/拆分组合",
+        "subSystem": "管理面",
+        "description": "超级小区功率共享场景约束（功率共享RRU对应的CP下行RE参考信号功率必须配置相同、不支持TTI级功率共享） 。"
+      },
+      {
+        "case": "4.2.16 -切片场景2：超级小区配置/拆分组合",
+        "subSystem": "CPA",
+        "description": "CPA载波配置/重配流程中携带RRU电桥类型、频偏补偿类型、RRU MOID信息。"
+      },
+      {
+        "case": "4.2.16 -切片场景2：超级小区配置/拆分组合",
+        "subSystem": "OAM",
+        "description": "识别RRU电桥类型、频偏补偿类型传递到CPA。"
+      },
+      {
+        "case": "4.2.16 -切片场景2：超级小区配置/拆分组合",
+        "subSystem": "CRV",
+        "description": "根据CPA载波配置/重配流程中携带RRU电桥类型、RRU MOID信息确定超级小区下的功率共享CP对。"
+      }
+    ],
+    "feature": "超级小区组网"
+  },
+  {
+    "cases": [
+      {
+        "case": "4.2.2 下行AMC",
+        "subSystem": "SPA",
+        "description": "超级小区功率共享场景，根据UE是否要调整PDSCH内环信息进行PDSCH内环调整（SU用户）。"
+      },
+      {
+        "case": "4.2.2 下行AMC",
+        "subSystem": "CRV",
+        "description": "超级小区功率共享场景，根据UE是否要调整PDSCH内环信息进行PDSCH内环调整（SDMA用户）。"
+      },
+      {
+        "case": "4.2.2 下行AMC",
+        "subSystem": "CRV",
+        "description": "超级小区场景根据功率共享RRU配置、功率共享开关、UE PDSCH激活集、SDMA配对情况等信息，确定UE是否要调整PDSCH内环。"
+      }
+    ],
+    "feature": "AMC管理"
+  }
+]

@@ -14,25 +14,19 @@ def clean_solution_title(title: str) -> str:
     return re.sub(r"-盖亚创建\s*$", "", title).strip()
 
 
-def is_blank(value) -> bool:
-    """判断值是否为空/全空白。"""
-    return value is None or (isinstance(value, str) and not value.strip())
-
-
-# openpyxl / Excel 不允许的控制字符（ASCII 0x00-0x08、0x0B、0x0C、0x0E-0x1F）
-# 允许：\t (0x09), \n (0x0A), \r (0x0D)
-_ILLEGAL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# 找出哪些字符是 ASCII 0-31 范围里的（非\t\n\r），做个 frozenset 快速查
+_ILLEGAL_CHAR_SET = frozenset(chr(i) for i in range(32) if i not in (9, 10, 13))
 
 
 def sanitize_for_excel(value) -> str:
     """清除 Excel 不允许的控制字符，保留 \\t \\n \\r。
 
-    - None → ""
-    - 非字符串 → str(value)
-    - 字符串 → 去除非法控制字符
+    99% 字符串走快速路径（set 查找），无控制字符时直接返回原值。
     """
     if value is None:
         return ""
     if not isinstance(value, str):
         value = str(value)
-    return _ILLEGAL_CHARS_RE.sub("", value)
+    if not any(c in _ILLEGAL_CHAR_SET for c in value):
+        return value
+    return "".join(c for c in value if c not in _ILLEGAL_CHAR_SET)

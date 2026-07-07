@@ -1,12 +1,13 @@
 """主程序入口。
 
 流水线：
-  1. 建/校验目标表（含迁移）
-  2. 从 root_system_change_analysis_sub 拉所有 distinct rdc_id（驱动表）
-  3. 对每个 rdc_id 创建空 bundle，依次跑 extractor 流水线
-  4. 导出 Excel：主表 / 子系表 / 组件表 / 模块表
-  5. 回写 DB
+  1. 建表
+  2. 从 feature_sub_system_gaia 拉所有 rdc_number（驱动表）
+  3. 对每行用 UsecaseExtractor 抽取 10 字段
+  4. 导出 Excel（单 Sheet，10 列）
+  5. 回写 DB（单表 UPSERT）
 """
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,49 +19,10 @@ from src.db.connector import MySQLConnector
 from src.db.queries import SQL_DRIVER_BASE
 from src.exporters.db_exporter import DBExporter
 from src.exporters.excel_exporter import ExcelExporter
-from src.extractors.component_extractor import ComponentExtractor
-from src.extractors.feature_change_extractor import FeatureChangeExtractor
-# GaiaBaseExtractor 已废除：bundle 创建时直接从 gaia 行预填，不再回查
-from src.extractors.module_extractor import ModuleExtractor
-from src.extractors.subsystem_change_extractor import SubsystemChangeExtractor
-from src.models.sys_domain_change_usecase import (
-    SysDomainChangeBundle, SysDomainChangeUsecase,
-)
+from src.extractors.usecase_extractor import UsecaseExtractor
 from src.utils.logger import get_logger
-from src.utils.text_clean import clean_solution_title
 
 log = get_logger(__name__)
-
-
-def build_pipeline(connector: MySQLConnector) -> list:
-    """构造抽取器流水线。顺序很重要。
-
-    注意：不再需要 GaiaBaseExtractor，因为 bundle 创建时直接从 gaia 行预填
-    方案级字段（solution/requirement/algorithm/implementation）。
-    """
-    return [
-        SubsystemChangeExtractor(),  # 必须最先：决定 subsystems 列表 + main.sub_system 拼接串
-        FeatureChangeExtractor(),    # 填 main.feature_change_analysis
-        ComponentExtractor(),        # 遍历 subsystems，收集组件
-        ModuleExtractor(),           # 遍历 subsystems，收集模块
-    ]
-
-
-def process_one(connector: MySQLConnector, gaia_row: dict, pipeline: list) -> SysDomainChangeBundle:
-    """从 gaia 一行驱动：构造 rdc_id，预填方案级字段，跑其他抽取器。"""
-    rdc_number = (gaia_row.get("rdc_number") or "").strip()
-    rdc_id = f"[{rdc_number}]"
-    main = SysDomainChangeUsecase(
-        rdc_id=rdc_id,
-        solution=clean_solution_title(gaia_row.get("title") or ""),
-        requirement=(gaia_row.get("description") or ""),
-        algorithm=(gaia_row.get("algorithm") or ""),
-        implementation=(gaia_row.get("implementation") or ""),
-    )
-    bundle = SysDomainChangeBundle(rdc_id=rdc_id, main=main)
-    for extractor in pipeline:
-        bundle = extractor.extract(bundle, connector)
-    return bundle
 
 
 def run():
@@ -73,55 +35,49 @@ def run():
     db_exporter = DBExporter(connector)
     db_exporter.ensure_tables()
 
-    # 驱动：root_system_change_analysis_sub
     driver_rows = connector.fetch_all(SQL_DRIVER_BASE)
-    log.info("驱动 feature_sub_system_gaia 共有 {} 条 rdc_number", len(driver_rows))
+    total = len(driver_rows)
+    log.info("驱动 feature_sub_system_gaia 共有 {} 条 rdc_number", total)
 
-    pipeline = build_pipeline(connector)
-    bundles = []
-    total_sub = total_comp = total_mod = 0
+    extractor = UsecaseExtractor(connector)
+    records = []
     failed = []
     start = time.time()
-    log_step = max(1, len(driver_rows) // 20)
+    log_step = max(1, total // 20)
 
     for idx, gaia_row in enumerate(driver_rows, 1):
         rdc_number = (gaia_row.get("rdc_number") or "").strip()
-        rdc_id = f"[{rdc_number}]"
         try:
-            bundle = process_one(connector, gaia_row, pipeline)
-            bundles.append(bundle)
-            total_sub += len(bundle.subsystems)
-            total_comp += len(bundle.components)
-            total_mod += len(bundle.modules)
+            rec = extractor.extract(gaia_row)
+            records.append(rec)
         except Exception as e:
-            log.warning("rdc_id={} 处理失败: {}", rdc_id, e)
-            failed.append(rdc_id)
+            log.warning("rdc_number={} 处理失败: {}", rdc_number, e)
+            failed.append(rdc_number)
 
-        # 批量进度日志（约每 5% 一行）
-        if idx % log_step == 0 or idx == len(driver_rows):
+        if idx % log_step == 0 or idx == total:
             elapsed = time.time() - start
             rate = idx / elapsed if elapsed > 0 else 0
-            eta = (len(driver_rows) - idx) / rate if rate > 0 else 0
+            eta = (total - idx) / rate if rate > 0 else 0
             log.info(
                 "进度 [{:>5}/{:<5}] {:.0%} | 速率 {:.1f} rdc/s | 已用 {:>4}s | 预计剩余 {:>4}s | 失败 {}",
-                idx, len(driver_rows), idx / len(driver_rows), rate, int(elapsed), int(eta), len(failed),
+                idx, total, idx / total, rate, int(elapsed), int(eta), len(failed),
             )
 
     extract_secs = time.time() - start
-    log.info(
-        "抽取完成: {} bundles | 子系 {} 行 / 组件 {} 条 / 模块 {} 条 | 失败 {} | 用时 {}s",
-        len(bundles), total_sub, total_comp, total_mod, len(failed), int(extract_secs),
-    )
+    log.info("抽取完成: {} 行 | 失败 {} | 用时 {}s", len(records), len(failed), int(extract_secs))
     if failed:
-        log.warning("失败 rdc_id 列表（前 10）: {}", failed[:10])
+        log.warning("失败 rdc_number 前 10: {}", failed[:10])
 
-    excel_start = time.time()
-    excel_path = ExcelExporter().export(bundles)
-    log.info("Excel 写入完成: {} | {}s", excel_path, int(time.time() - excel_start))
+    if not os.getenv("SKIP_EXCEL"):
+        excel_start = time.time()
+        ExcelExporter().export(records)
+        log.info("Excel 阶段用时: {}s", int(time.time() - excel_start))
+    else:
+        log.info("Excel 写入已跳过（SKIP_EXCEL=1）")
 
     db_start = time.time()
-    db_exporter.upsert_all(bundles)
-    log.info("DB 回写完成 | {}s", int(time.time() - db_start))
+    db_exporter.upsert_all(records)
+    log.info("DB 阶段用时: {}s", int(time.time() - db_start))
 
     log.info("=== 任务结束 | 总用时 {}s ===", int(time.time() - start))
 

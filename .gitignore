@@ -28,3 +28,8 @@ venv/
 # 系统
 .DS_Store
 Thumbs.db
+
+# Office / WPS 打开 xlsx/doc/docx 时生成的隐藏锁文件
+.~*
+*.tmp
+~$*
